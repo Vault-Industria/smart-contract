@@ -12,7 +12,7 @@ contract NFTMarketplace is ERC721URIStorage {
     Counters.Counter private _tokenIds;
     Counters.Counter private _itemsSold;
 
-    uint256 listingPrice = 0.025 ether;
+   
     address payable owner;
 
     mapping(uint256 => MarketItem) private idToMarketItem;
@@ -39,15 +39,10 @@ contract NFTMarketplace is ERC721URIStorage {
     }
 
     /* Updates the listing price of the contract */
-    function updateListingPrice(uint _listingPrice) public payable {
-      require(owner == msg.sender, "Only marketplace owner can update listing price.");
-      listingPrice = _listingPrice;
-    }
+ 
 
     /* Returns the listing price of the contract */
-    function getListingPrice() public view returns (uint256) {
-      return listingPrice;
-    }
+  
 
   
 
@@ -88,7 +83,7 @@ contract NFTMarketplace is ERC721URIStorage {
       uint256 price
     ) private {
       require(price > 0, "Price must be at least 1 wei");
-      require(msg.value == listingPrice, "Price must be equal to listing price");
+    
 
       idToMarketItem[tokenId] =  MarketItem(
         tokenId,
@@ -111,7 +106,7 @@ contract NFTMarketplace is ERC721URIStorage {
     /* allows someone to resell a token they have purchased */
     function resellToken(uint256 tokenId, uint256 price) public payable {
       require(idToMarketItem[tokenId].owner == msg.sender, "Only item owner can perform this operation");
-      require(msg.value == listingPrice, "Price must be equal to listing price");
+      
       idToMarketItem[tokenId].sold = false;
       idToMarketItem[tokenId].price = price;
       idToMarketItem[tokenId].seller = payable(msg.sender);
@@ -135,7 +130,7 @@ contract NFTMarketplace is ERC721URIStorage {
       idToMarketItem[tokenId].seller = payable(address(0));
       _itemsSold.increment();
       _transfer(address(this), msg.sender, tokenId);
-      payable(owner).transfer(listingPrice);
+    
       payable(seller).transfer(msg.value);
     }
 
