@@ -112,6 +112,8 @@ function supportsInterface(bytes4 interfaceId) public view virtual override(ERC7
     /* delist from market place*/ 
 
     function delist(uint256 tokenId) public{
+      require(idToMarketItem[tokenId].seller == msg.sender, "Only item owner can perform this operation");
+       idToMarketItem[tokenId].sold = true;
       _transfer(address(this),msg.sender, tokenId);
 
     }
