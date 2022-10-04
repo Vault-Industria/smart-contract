@@ -4,21 +4,30 @@ pragma solidity ^0.8.4;
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Royalty.sol";
+import "@openzeppelin/contracts/interfaces/IERC2981.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+
 
 import "hardhat/console.sol";
 
-contract NFTMarketplace is ERC721URIStorage {
+contract NFTMarketplace is ERC721URIStorage,ERC2981,ReentrancyGuard {
     using Counters for Counters.Counter;
     Counters.Counter private _tokenIds;
     Counters.Counter private _itemsSold;
 
-   
+    
     address payable owner;
+    address payable artist;
 
     mapping(uint256 => MarketItem) private idToMarketItem;
     mapping(string =>uint256) public uriToId;
+    
+  
 
     struct MarketItem {
+      uint256 royaltyPercent;
+      address payable creator;
       uint256 tokenId;
       address payable seller;
       address payable owner;
@@ -26,10 +35,13 @@ contract NFTMarketplace is ERC721URIStorage {
       bool sold;
     }
 
+    mapping(uint256 => MarketItem) _MarketItem;
+
     event MarketItemCreated (
       uint256 indexed tokenId,
       address seller,
       address owner,
+      address creator,
       uint256 price,
       bool sold
     );
@@ -38,39 +50,29 @@ contract NFTMarketplace is ERC721URIStorage {
       owner = payable(msg.sender);
     }
 
-    /* Updates the listing price of the contract */
- 
+   /**
+ * @dev See {IERC165-supportsInterface}.
+ */
+function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, ERC2981) returns (bool) {
+    return super.supportsInterface(interfaceId);
+}
 
-    /* Returns the listing price of the contract */
+
+
   
 
-  
-
-    function batchToken(string memory tokenURI,uint256 supply,uint256 price) public payable returns (uint) {
-          uint256 newTokenId;
-       for(uint i = 0; i < supply; i++) {
-         _tokenIds.increment();
-         newTokenId = _tokenIds.current();
-         _mint(msg.sender, newTokenId);
-          _setTokenURI(newTokenId, tokenURI);
-          createMarketItem(newTokenId, price);
-         
-
-
-
-       }
-        return newTokenId;
-    }
+   
 
     /* Mints a token and lists it in the marketplace */
-    function createToken(string memory tokenURI, uint256 price) public payable returns (uint) {
+    function createToken(string memory tokenURI, uint256 price, uint256 royalty) public payable returns (uint) {
       _tokenIds.increment();
       uint256 newTokenId = _tokenIds.current();
 
       _mint(msg.sender, newTokenId);
       _setTokenURI(newTokenId, tokenURI);
-      createMarketItem(newTokenId, price);
+      createMarketItem(newTokenId, price,royalty);
       uriToId[tokenURI] = newTokenId;
+    
       return newTokenId;
     }
 
@@ -80,12 +82,15 @@ contract NFTMarketplace is ERC721URIStorage {
 
     function createMarketItem(
       uint256 tokenId,
-      uint256 price
+      uint256 price,
+      uint256 royaltyPercent
     ) private {
       require(price > 0, "Price must be at least 1 wei");
-    
-
+ 
+      address creator = msg.sender;
       idToMarketItem[tokenId] =  MarketItem(
+        royaltyPercent,
+       payable(creator),
         tokenId,
         payable(msg.sender),
         payable(address(this)),
@@ -97,15 +102,24 @@ contract NFTMarketplace is ERC721URIStorage {
       emit MarketItemCreated(
         tokenId,
         msg.sender,
+        creator,
         address(this),
         price,
         false
       );
     }
 
+    /* delist from market place*/ 
+
+    function delist(uint256 tokenId) public{
+      _transfer(address(this),msg.sender, tokenId);
+
+    }
+
     /* allows someone to resell a token they have purchased */
     function resellToken(uint256 tokenId, uint256 price) public payable {
       require(idToMarketItem[tokenId].owner == msg.sender, "Only item owner can perform this operation");
+     
       
       idToMarketItem[tokenId].sold = false;
       idToMarketItem[tokenId].price = price;
@@ -115,7 +129,9 @@ contract NFTMarketplace is ERC721URIStorage {
 
       _transfer(msg.sender, address(this), tokenId);
       
+      
     }
+    
 
     /* Creates the sale of a marketplace item */
     /* Transfers ownership of the item, as well as funds between parties */
@@ -124,14 +140,31 @@ contract NFTMarketplace is ERC721URIStorage {
       ) public payable {
       uint price = idToMarketItem[tokenId].price;
       address seller = idToMarketItem[tokenId].seller;
+      address payable creators = idToMarketItem[tokenId].creator;
+      uint royalty = idToMarketItem[tokenId].royaltyPercent;
+      uint bps = royalty*100;
+      uint earning = bps * price /10000;
+
+  
+
       require(msg.value == price, "Please submit the asking price in order to complete the purchase");
       idToMarketItem[tokenId].owner = payable(msg.sender);
       idToMarketItem[tokenId].sold = true;
       idToMarketItem[tokenId].seller = payable(address(0));
+      
+      
+
       _itemsSold.increment();
       _transfer(address(this), msg.sender, tokenId);
+     
+       _payRoyalty(earning,creators);
+      payable(seller).transfer(msg.value-earning);
+     
     
-      payable(seller).transfer(msg.value);
+    
+
+   
+
     }
 
     /* Returns all unsold market items */
@@ -209,4 +242,65 @@ contract NFTMarketplace is ERC721URIStorage {
       }
       return items;
     }
+
+    function checkValue(uint256 tokenId) public view  returns(uint){
+    
+        return idToMarketItem[tokenId].price * 1 wei;
+      
+    }
+
+      function _payRoyalty(uint256 _royalityFee,address artists) internal {
+     
+        (bool success1, ) = payable(artists).call{value: _royalityFee}("");
+        require(success1);
+    }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
